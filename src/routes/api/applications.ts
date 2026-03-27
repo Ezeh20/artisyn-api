@@ -12,6 +12,18 @@ const controller = new ApplicationController();
 // ============================================================================
 
 /**
+ * POST /api/applications
+ * Authenticated users may apply to a listing
+ */
+router.post(
+  '/applications',
+  authMiddleware,
+  applicationValidation.create,
+  handleValidation,
+  controller.create
+);
+
+/**
  * GET /api/listings/:listingId/applications
  * Listing owner may view applications for their listing
  */
