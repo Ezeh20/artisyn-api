@@ -1,4 +1,5 @@
-import { Request, Response } from "express";
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 import BaseController from "./BaseController";
 import DataExportRequestResource from "src/resources/DataExportRequestResource";
@@ -8,7 +9,13 @@ import { sendMail } from 'src/utils/mailer';
 import { prisma } from 'src/db';
 import argon2 from 'argon2';
 
-// Removed unused import from '@prisma/client';
+import BaseController from './BaseController';
+import DataExportRequestResource from 'src/resources/DataExportRequestResource';
+import { prisma } from 'src/db';
+import { dataExportQueue } from 'src/services/DataExportQueue';
+import { DataExportService } from 'src/services/DataExportService';
+import { logAuditEvent } from 'src/utils/auditLogger';
+import { RequestError } from 'src/utils/errors';
 
 /**
  * DataExportController - Handles GDPR data export requests
@@ -23,8 +30,8 @@ export default class extends BaseController {
             const userId = req.user?.id!;
 
             const { format = 'json' } = await this.validateAsync(req, {
-                'format': ['nullable', 'string', 'in:json,csv']
-            })
+                format: ['nullable', 'string', 'in:json,csv'],
+            });
 
             // Check if user has an active export request within last 24 hours
             const recentRequest = await prisma.dataExportRequest.findFirst({
@@ -40,7 +47,7 @@ export default class extends BaseController {
             RequestError.abortIf(
                 recentRequest,
                 'You already have an active export request. Please wait 24 hours before requesting another.',
-                429
+                429,
             );
 
             // Create export request
@@ -61,8 +68,7 @@ export default class extends BaseController {
                 metadata: { format },
             });
 
-            // TODO: Trigger async job to generate export file
-            // This would typically use a job queue like Bull or Resque
+            dataExportQueue.enqueue(exportRequest.id);
 
             new DataExportRequestResource(req, res, exportRequest)
                 .json()
@@ -142,7 +148,6 @@ export default class extends BaseController {
 
     /**
      * Download exported data
-     * Typically called from a pre-signed URL
      */
     downloadExport = async (req: Request, res: Response) => {
         try {
@@ -162,13 +167,13 @@ export default class extends BaseController {
             RequestError.abortIf(
                 exportRequest.status !== 'ready',
                 'Export is not ready for download',
-                400
+                400,
             );
 
             RequestError.abortIf(
                 exportRequest.expiresAt && new Date() > exportRequest.expiresAt,
                 'Download link has expired',
-                410
+                410,
             );
 
             // Log download
@@ -180,12 +185,23 @@ export default class extends BaseController {
                 metadata: { action: 'download' },
             });
 
-            // Redirect to download URL (typically S3 or similar)
-            if (exportRequest.downloadUrl) {
-                res.redirect(exportRequest.downloadUrl);
-            } else {
-                RequestError.abortIf(true, 'Download URL not available', 500);
+            const exportFilePath = DataExportService.getExportFilePath(
+                exportRequest.id,
+                exportRequest.format,
+            );
+
+            if (existsSync(exportFilePath)) {
+                return res.download(exportFilePath, path.basename(exportFilePath));
             }
+
+            if (
+                exportRequest.downloadUrl &&
+                exportRequest.downloadUrl !== DataExportService.getDownloadUrl(exportRequest.id)
+            ) {
+                return res.redirect(exportRequest.downloadUrl);
+            }
+
+            RequestError.abortIf(true, 'Download file not available', 500);
         } catch (error) {
             throw error;
         }
@@ -213,7 +229,7 @@ export default class extends BaseController {
             RequestError.abortIf(
                 exportRequest.status === 'ready' || exportRequest.status === 'expired',
                 'Cannot cancel this export request',
-                400
+                400,
             );
 
             const updated = await prisma.dataExportRequest.update({
