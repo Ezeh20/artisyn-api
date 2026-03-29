@@ -1,10 +1,27 @@
 import express, { Express } from "express";
 import { facebookStrategy, googleStrategy } from "./passport";
-import { ipBlockingMiddleware, loadBlockedIPsFromDB, recordFailedAttemptMiddleware, startIPBlockingCleanup } from "src/middleware/ipBlocking";
-import { preventParameterPollutionMiddleware, sanitizeHeadersMiddleware, securityHeadersMiddleware, timingAttackPreventionMiddleware } from "src/middleware/securityHeaders";
+import {
+  ipBlockingMiddleware,
+  loadBlockedIPsFromDB,
+  recordFailedAttemptMiddleware,
+  startIPBlockingCleanup,
+} from "src/middleware/ipBlocking";
+import {
+  preventParameterPollutionMiddleware,
+  sanitizeHeadersMiddleware,
+  securityHeadersMiddleware,
+  timingAttackPreventionMiddleware,
+} from "src/middleware/securityHeaders";
 // Security imports
-import { rateLimitMiddleware, registerBypassToken, startRateLimitCleanup } from "src/middleware/rateLimiter";
-import { requestLoggingMiddleware, startLogCleanupScheduler } from "src/utils/securityLogging";
+import {
+  rateLimitMiddleware,
+  registerBypassToken,
+  startRateLimitCleanup,
+} from "src/middleware/rateLimiter";
+import {
+  requestLoggingMiddleware,
+  startLogCleanupScheduler,
+} from "src/utils/securityLogging";
 import routes, { loadRoutes } from "src/routes/index";
 
 import { ErrorHandler } from "./request-handlers";
@@ -26,7 +43,6 @@ const __dirname = path.dirname(__filename);
 
 export const initialize = async (app: Express) => {
   // ===== SECURITY MIDDLEWARE (Must be first) =====
-
 
   // ===== BODY PARSING MIDDLEWARE =====
   // Registered here only. Do not add body parsers in src/index.ts or any
@@ -58,10 +74,10 @@ export const initialize = async (app: Express) => {
   app.use(rateLimitMiddleware);
 
   // Initialize rate limit bypass tokens from environment
-  const bypassTokensEnv = process.env.RATE_LIMIT_BYPASS_TOKENS || '';
+  const bypassTokensEnv = process.env.RATE_LIMIT_BYPASS_TOKENS || "";
   if (bypassTokensEnv) {
-    const tokens = bypassTokensEnv.split(',').map(t => t.trim());
-    tokens.forEach(token => {
+    const tokens = bypassTokensEnv.split(",").map((t) => t.trim());
+    tokens.forEach((token) => {
       if (token) {
         registerBypassToken(token);
         console.log(`[Security] Registered rate limit bypass token`);
@@ -76,7 +92,7 @@ export const initialize = async (app: Express) => {
   app.use(requestLoggingMiddleware);
 
   // Record failed authentication attempts for IP blocking
-  app.use(recordFailedAttemptMiddleware(['/auth/login', '/auth/register']));
+  app.use(recordFailedAttemptMiddleware(["/auth/login", "/auth/register"]));
 
   // Parse application/json
   app.use(express.json());
@@ -109,8 +125,8 @@ export const initialize = async (app: Express) => {
   app.use(routes);
 
   // Initialize Schedulers and Security Services
-  if (process.env.NODE_ENV !== 'test') {
-    console.log('[Security] Starting security services and schedulers...');
+  if (process.env.NODE_ENV !== "test") {
+    console.log("[Security] Starting security services and schedulers...");
   }
 
   // Start rate limit cleanup
@@ -132,8 +148,8 @@ export const initialize = async (app: Express) => {
   startAnalyticsScheduler();
   startMediaScheduler();
 
-  if (process.env.NODE_ENV !== 'test') {
-    console.log('[Security] All security services initialized successfully');
+  if (process.env.NODE_ENV !== "test") {
+    console.log("[Security] All security services initialized successfully");
   }
 
   // Error Handler
