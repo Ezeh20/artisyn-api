@@ -3,7 +3,7 @@ import { facebookStrategy, googleStrategy } from "./passport";
 import { ipBlockingMiddleware, loadBlockedIPsFromDB, recordFailedAttemptMiddleware, startIPBlockingCleanup } from "src/middleware/ipBlocking";
 import { preventParameterPollutionMiddleware, sanitizeHeadersMiddleware, securityHeadersMiddleware, timingAttackPreventionMiddleware } from "src/middleware/securityHeaders";
 // Security imports
-import { rateLimitMiddleware, startRateLimitCleanup } from "src/middleware/rateLimiter";
+import { rateLimitMiddleware, registerBypassToken, startRateLimitCleanup } from "src/middleware/rateLimiter";
 import { requestLoggingMiddleware, startLogCleanupScheduler } from "src/utils/securityLogging";
 import routes, { loadRoutes } from "src/routes/index";
 
@@ -27,6 +27,18 @@ const __dirname = path.dirname(__filename);
 export const initialize = async (app: Express) => {
   // ===== SECURITY MIDDLEWARE (Must be first) =====
 
+
+  // ===== BODY PARSING MIDDLEWARE =====
+  // Registered here only. Do not add body parsers in src/index.ts or any
+  // other bootstrap file — duplicate registration causes unpredictable
+  // request-processing behavior and makes middleware ordering harder to reason about.
+
+  // Parse application/json
+  app.use(express.json());
+
+  // Parse application/x-www-form-urlencoded (for non-multipart forms)
+  app.use(express.urlencoded({ extended: true }));
+
   // Security headers - protects against common vulnerabilities
   app.use(securityHeadersMiddleware);
 
@@ -44,6 +56,18 @@ export const initialize = async (app: Express) => {
 
   // Rate limiting middleware - tiered by user type
   app.use(rateLimitMiddleware);
+
+  // Initialize rate limit bypass tokens from environment
+  const bypassTokensEnv = process.env.RATE_LIMIT_BYPASS_TOKENS || '';
+  if (bypassTokensEnv) {
+    const tokens = bypassTokensEnv.split(',').map(t => t.trim());
+    tokens.forEach(token => {
+      if (token) {
+        registerBypassToken(token);
+        console.log(`[Security] Registered rate limit bypass token`);
+      }
+    });
+  }
 
   // API key validation
   app.use(apiKeyValidationMiddleware);
