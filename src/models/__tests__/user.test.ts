@@ -1,6 +1,6 @@
-import { PrismaClient, UserRole } from '@prisma/client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
+import { UserRole } from '@prisma/client';
 import argon2 from 'argon2';
 // Create a new instance of PrismaClient for testing
 import { prisma } from 'src/db';
@@ -12,6 +12,9 @@ describe('User Model', () => {
   afterAll(async () => {
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.$disconnect();
+    await prisma.user.deleteMany({
+      where: { id: { in: createdUserIds } },
+    });
   });
 
   it('should create a new user', async () => {
@@ -37,7 +40,7 @@ describe('User Model', () => {
 
   it('should not allow duplicate emails', async () => {
     const userData = {
-      email: 'duplicate@example.com',
+      email: `duplicate-${Date.now()}@example.com`,
       password: await argon2.hash('password123'),
       firstName: 'Duplicate',
       lastName: 'User',
@@ -48,6 +51,10 @@ describe('User Model', () => {
       data: userData,
     });
     createdUserIds.push(user.id);
+    const duplicateUser = await prisma.user.findUnique({ where: { email: userData.email } });
+    if (duplicateUser) {
+      createdUserIds.push(duplicateUser.id);
+    }
 
     await expect(
       prisma.user.create({
@@ -58,7 +65,7 @@ describe('User Model', () => {
 
   it('should update a user', async () => {
     const userData = {
-      email: 'update@example.com',
+      email: `update-${Date.now()}@example.com`,
       password: await argon2.hash('password123'),
       firstName: 'Update',
       lastName: 'User',
@@ -84,7 +91,7 @@ describe('User Model', () => {
 
   it('should delete a user', async () => {
     const userData = {
-      email: 'delete@example.com',
+      email: `delete-${Date.now()}@example.com`,
       password: await argon2.hash('password123'),
       firstName: 'Delete',
       lastName: 'User',
