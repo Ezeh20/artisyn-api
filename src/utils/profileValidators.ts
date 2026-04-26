@@ -77,6 +77,25 @@ export const accountLinkValidationRules: InitialRules = {
     provider: ['string', 'required', 'in:GOOGLE,FACEBOOK,GITHUB,APPLE,TWITTER,LINKEDIN'],
     providerUserId: ['string', 'required'],
     accessToken: ['string', 'required'],
+    refreshToken: ['string'],
+    expiresAt: ['date'],
+    providerEmail: ['email'],
+    providerName: ['string', 'max:255'],
+};
+
+/**
+ * Validation rules for checking provider account availability
+ */
+export const checkAvailabilityValidationRules: InitialRules = {
+    provider: ['string', 'required', 'in:GOOGLE,FACEBOOK,GITHUB,APPLE,TWITTER,LINKEDIN'],
+    providerUserId: ['string', 'required'],
+};
+
+/**
+ * Validation rules for verifying an account link
+ */
+export const accountLinkVerifyValidationRules: InitialRules = {
+    provider: ['string', 'required', 'in:GOOGLE,FACEBOOK,GITHUB,APPLE,TWITTER,LINKEDIN'],
 };
 
 /**
