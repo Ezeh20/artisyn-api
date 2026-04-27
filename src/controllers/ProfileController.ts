@@ -8,20 +8,7 @@ import UserProfileResource from "src/resources/UserProfileResource";
 import { logAuditEvent } from 'src/utils/auditLogger';
 import { prisma } from 'src/db';
 import { normalizeSocialLinks, profileValidationRules } from 'src/utils/profileValidators';
-
-const profileCompletionFields = [
-    'bio',
-    'dateOfBirth',
-    'profilePictureUrl',
-    'website',
-    'occupation',
-    'companyName',
-] as const;
-
-const isPubliclyVisible = (
-    isPublic: boolean,
-    profileVisibility?: 'PUBLIC' | 'PRIVATE' | 'FRIENDS_ONLY' | 'CUSTOM'
-) => isPublic && (profileVisibility ?? 'PUBLIC') === 'PUBLIC';
+import { PrivacyService } from 'src/services/PrivacyService';
 
 /**
  * UserProfileController - Manages user profile CRUD operations
@@ -97,11 +84,26 @@ export default class extends BaseController {
                 where: { userId },
             });
 
-            // Calculate completion percentage
-            const filledFields = profileCompletionFields.filter(
-                field => data[field] !== undefined && data[field] !== null && data[field] !== ''
+// Calculate completion percentage from merged profile state
+            const completionFields = [
+                'bio',
+                'dateOfBirth',
+                'profilePictureUrl',
+                'website',
+                'occupation',
+                'companyName',
+            ];
+            
+            // Merge existing profile with request body
+            const mergedProfile = {
+                ...existingProfile,
+                ...req.body,
+            };
+            
+            const filledFields = completionFields.filter(
+                field => mergedProfile[field] !== undefined && mergedProfile[field] !== null && mergedProfile[field] !== ''
             ).length;
-            const completionPercentage = Math.round((filledFields / profileCompletionFields.length) * 100);
+            const completionPercentage = Math.round((filledFields / completionFields.length) * 100);
 
             // Prepare update data
             const updateData: any = {
@@ -167,8 +169,17 @@ export default class extends BaseController {
                 },
             });
 
-            const missingFields = profileCompletionFields.filter(field => {
-                const value = profile?.[field];
+            const completionFields = [
+                'bio',
+                'dateOfBirth',
+                'profilePictureUrl',
+                'website',
+                'occupation',
+                'companyName',
+            ];
+            
+            const missingFields = completionFields.filter((field: string) => {
+                const value = profile?.[field as keyof typeof profile];
                 return value === undefined || value === null || value === '';
             });
 
@@ -184,7 +195,7 @@ export default class extends BaseController {
                 website: null,
                 occupation: null,
                 companyName: null,
-                missingFields: [...profileCompletionFields],
+                missingFields: [...completionFields],
             };
 
             new UserProfileResource(req, res, data)
@@ -206,65 +217,44 @@ export default class extends BaseController {
     getPublicProfile = async (req: Request, res: Response) => {
         try {
             const targetUserId = req.params.userId;
+            const viewerId = req.user?.id || null;
             RequestError.assertFound(targetUserId, 'User ID required', 400);
 
-            const profile = await prisma.userProfile.findFirst({
-                where: { userId: String(targetUserId) },
-                select: {
-                    id: true,
-                    userId: true,
-                    bio: true,
-                    profilePictureUrl: true,
-                    website: true,
-                    occupation: true,
-                    companyName: true,
-                    location: true,
-                    verifiedBadge: true,
-                    isProfessional: true,
-                    isPublic: true,
-                    createdAt: true,
-                    user: {
-                        select: {
-                            email: true,
-                            phone: true,
-                            privacySettings: {
-                                select: {
-                                    profileVisibility: true,
-                                    showEmail: true,
-                                    showPhone: true,
-                                    showLocation: true,
-                                },
-                            },
-                        },
-                    },
-                },
-            });
+            // Fetch user, profile, and privacy settings
+            const [user, profile, privacySettings] = await Promise.all([
+                prisma.user.findUnique({
+                    where: { id: String(targetUserId) },
+                }),
+                prisma.userProfile.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+                prisma.privacySettings.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+            ]);
 
             RequestError.assertFound(profile, 'Profile not found', 404);
-            RequestError.abortIf(
-                !isPubliclyVisible(
-                    profile.isPublic,
-                    profile.user.privacySettings?.profileVisibility
-                ),
-                'Profile is private',
-                403
-            );
+            RequestError.assertFound(user, 'User not found', 404);
 
+            // Return 403 if profile is private
+            if (privacySettings?.profileVisibility === 'PRIVATE') {
+                return res.status(403).json({
+                    status: 'error',
+                    code: 403,
+                    message: 'This profile is private'
+                });
+            }
+
+            // Build response with conditional field inclusion
             const publicProfile = {
-                id: profile.id,
                 userId: profile.userId,
                 bio: profile.bio,
-                profilePictureUrl: profile.profilePictureUrl,
-                website: profile.website,
-                occupation: profile.occupation,
                 companyName: profile.companyName,
-                location: profile.user.privacySettings?.showLocation ? profile.location : null,
-                email: profile.user.privacySettings?.showEmail ? profile.user.email : null,
-                phone: profile.user.privacySettings?.showPhone ? profile.user.phone : null,
-                verifiedBadge: profile.verifiedBadge,
-                isProfessional: profile.isProfessional,
-                isPublic: profile.isPublic,
                 createdAt: profile.createdAt,
+                dateOfBirth: profile.dateOfBirth,
+                location: privacySettings?.showLocation ? profile.location : null,
+                email: privacySettings?.showEmail ? user.email : null,
+                phone: privacySettings?.showPhone ? user.phone : null,
             };
 
             // Log public profile view
@@ -278,14 +268,12 @@ export default class extends BaseController {
                 },
             });
 
-            new UserProfileResource(req, res, publicProfile)
-                .json()
-                .status(200)
-                .additional({
-                    status: 'success',
-                    message: 'Public profile retrieved',
-                    code: 200,
-                });
+            res.status(200).json({
+                status: 'success',
+                code: 200,
+                message: 'Public profile retrieved',
+                data: publicProfile,
+            });
         } catch (error) {
             throw error;
         }

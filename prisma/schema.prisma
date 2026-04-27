@@ -80,6 +80,9 @@ model User {
   linkedAccounts       AccountLink[]         @relation("LinkedAccounts")
   auditLogs            AuditLog[]            @relation("UserAuditLogs")
   jobs                 Job[]
+  // Friendship relations
+  friendRequests       Friendship[]          @relation("UserFriendRequests")
+  receivedRequests     Friendship[]          @relation("FriendOf")
   locationId           String?
 
   @@index([email])
@@ -621,6 +624,20 @@ enum PrivacyLevel {
   CUSTOM
 }
 
+// Enum for friendship status
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+// Enum for API key status
+enum APIKeyStatus {
+  active
+  revoked
+  expired
+}
+
 // Enum for audit action types
 enum AuditAction {
   LOGIN
@@ -777,11 +794,27 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// Enum for API key status
-enum APIKeyStatus {
-  active
-  revoked
-  expired
+// Friendship model - for friend relationships and friend-based privacy
+model Friendship {
+  id            String             @id @default(uuid())
+  userId        String             // User who initiated the friend request
+  friendId      String             // User who received the friend request
+  status        FriendshipStatus   @default(PENDING)
+  requestedAt   DateTime           @default(now())
+  acceptedAt    DateTime?
+  blockedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  // Relations
+  user          User               @relation("UserFriendRequests", fields: [userId], references: [id], onDelete: Cascade)
+  friend        User               @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([userId, status])
+  @@index([friendId, status])
+  @@index([status])
+  @@map("friendships")
 }
 
 // API Key model for persistent API key management
