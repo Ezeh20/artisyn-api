@@ -591,19 +591,19 @@ Links a new social account to the user's profile.
 - `TWITTER`
 - `LINKEDIN`
 
-**Response (201):**
+**Response (202):**
 ```json
 {
   "data": { /* created account link */ },
   "status": "success",
   "message": "Account linked successfully",
-  "code": 201
+  "code": 202
 }
 ```
 
 **Error Responses:**
 - `422`: Validation failed
-- `409`: Provider already linked (updates existing)
+- `409`: Provider already linked (conflict - attempt to link provider that is currently active)
 
 ---
 

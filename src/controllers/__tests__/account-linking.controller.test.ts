@@ -117,6 +117,46 @@ describe('POST /api/account-links (issue #137)', () => {
         expect(res.body.data.accessToken).toBeUndefined();
         expect(res.body.data.refreshToken).toBeUndefined();
     });
+
+    it('should return 409 Conflict when trying to link already-linked provider', async () => {
+        // Link first time
+        await request(app)
+            .post('/api/account-links')
+            .set('Authorization', `Bearer ${userToken}`)
+            .send({
+                provider: 'GOOGLE',
+                providerUserId: 'google-123',
+                accessToken: 'access-token',
+            })
+            .expect(202);
+
+        // Try to link same provider again
+        const res = await request(app)
+            .post('/api/account-links')
+            .set('Authorization', `Bearer ${userToken}`)
+            .send({
+                provider: 'GOOGLE',
+                providerUserId: 'google-456',
+                accessToken: 'different-token',
+            });
+
+        expect(res.status).toBe(409);
+        expect(res.body.message).toContain('already linked');
+    });
+
+    it('should return 422 for validation errors (distinct from 409 conflict)', async () => {
+        const res = await request(app)
+            .post('/api/account-links')
+            .set('Authorization', `Bearer ${userToken}`)
+            .send({
+                provider: 'INVALID_PROVIDER',
+                providerUserId: 'google-123',
+                accessToken: 'access-token',
+            });
+
+        expect(res.status).toBe(422);
+        expect(res.body.errors).toBeDefined();
+    });
 });
 
 // ─── Issue #136: Unlink by provider name ─────────────────────────────────────

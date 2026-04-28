@@ -33,7 +33,7 @@ export default class AccountLinkingController extends BaseController {
     if (existingLink && !existingLink.unlinkedAt) {
       throw new RequestError(
         `${validated.provider} account is already linked to your profile`,
-        400
+        409
       );
     }
 
