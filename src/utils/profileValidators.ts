@@ -32,7 +32,7 @@ export const profileValidationRules: InitialRules = {
     companyName: ['string', 'max:100'],
     location: ['string', 'max:100'],
     timezone: ['string'],
-    language: ['string', 'in:en,es,fr,de,it,pt,ja,zh,ar'],
+    language: ['string', 'bcp47'],
     isPublic: ['boolean'],
     isProfessional: ['boolean'],
 };
@@ -48,7 +48,7 @@ export const preferencesValidationRules: InitialRules = {
     activityEmails: ['boolean'],
     digestFrequency: ['string', 'in:daily,weekly,monthly,never'],
     theme: ['string', 'in:light,dark,system'],
-    language: ['string', 'in:en,es,fr,de,it,pt,ja,zh,ar'],
+    language: ['string', 'bcp47'],
     currencyPreference: ['string', 'min:3,max:3'],
     twoFactorEnabled: ['boolean'],
     dataCollectionConsent: ['boolean'],

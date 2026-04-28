@@ -246,7 +246,7 @@ Updates all user preferences.
 **Validation Rules:**
 - `digestFrequency`: must be one of `daily`, `weekly`, `monthly`, `never`
 - `theme`: must be one of `light`, `dark`, `system`
-- `language`: must be valid language code
+- `language`: must be a valid BCP 47 language code
 - `currencyPreference`: must be 3-character currency code
 
 **Response (200):**

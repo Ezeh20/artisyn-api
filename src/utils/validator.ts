@@ -43,6 +43,7 @@ setTranslationObject({
     en: {
         unique: 'The selected :attribute is not available.',
         exists: 'The selected :attribute does not exist.',
+        bcp47: 'The :attribute must be a valid BCP 47 language code.',
     }
 });
 
@@ -54,6 +55,24 @@ register('unique', async function (value, parameters, attribute) {
 register('exists', async function (value, parameters, attribute) {
     const [modelName, field, except] = parameters ?? [];
     return (await modelExists('exists', value, field ?? attribute, modelName)) === true
+});
+
+register('bcp47', function (value) {
+    if (typeof value !== 'string' || !value.trim()) {
+        return false;
+    }
+
+    if (typeof Intl?.Locale === 'function') {
+        try {
+            new Intl.Locale(value);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    const bcp47Pattern = /^[A-Za-z]{2,3}(?:-[A-Za-z]{3})?(?:-(?:[A-Za-z]{4}|[A-Za-z]{2}|[0-9]{3}))(?:-(?:[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*$/;
+    return bcp47Pattern.test(value);
 });
 
 const validator = <X extends InitialRules, A extends boolean = false> (

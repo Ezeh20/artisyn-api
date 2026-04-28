@@ -292,6 +292,40 @@ describe('ProfileController', () => {
         expect(updated.bio).toBe('Updated bio');
     });
 
+    it('should accept valid BCP 47 locale codes for profile language', async () => {
+        const response = await request(app)
+            .post('/api/test/profile')
+            .set('Authorization', `Bearer ${authToken}`)
+            .send({
+                language: 'zh-Hant',
+            })
+            .expect(200);
+
+        expect(response.body.data).toEqual(
+            expect.objectContaining({
+                language: 'zh-Hant',
+            })
+        );
+    });
+
+    it('should reject invalid profile language locale codes', async () => {
+        const response = await request(app)
+            .post('/api/test/profile')
+            .set('Authorization', `Bearer ${authToken}`)
+            .send({
+                language: 'invalid-lang',
+            })
+            .expect(422);
+
+        expect(response.body.errors).toEqual(
+            expect.objectContaining({
+                language: [
+                    'The language must be a valid BCP 47 language code.',
+                ],
+            })
+        );
+    });
+
     it('should track profile as public or private', async () => {
         const profile = await prisma.userProfile.create({
             data: {
