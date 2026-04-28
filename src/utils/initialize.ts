@@ -2,7 +2,6 @@ import express, { Express } from "express";
 import { facebookStrategy, googleStrategy } from "./passport";
 import {
   ipBlockingMiddleware,
-  loadBlockedIPsFromDB,
   recordFailedAttemptMiddleware,
   startIPBlockingCleanup,
 } from "src/middleware/ipBlocking";
@@ -76,10 +75,10 @@ export const initialize = async (app: Express) => {
   // request-processing behavior and makes middleware ordering harder to reason about.
 
   // Parse application/json
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // Parse application/x-www-form-urlencoded (for non-multipart forms)
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // ===== SECURITY MIDDLEWARE =====
 
@@ -153,7 +152,6 @@ export const initialize = async (app: Express) => {
 
   startRateLimitCleanup();
   startIPBlockingCleanup();
-  await loadBlockedIPsFromDB();
   startMonitoringScheduler();
   startLogCleanupScheduler();
   startAnalyticsScheduler();

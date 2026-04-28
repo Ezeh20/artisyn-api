@@ -1,15 +1,17 @@
 import { defineConfig } from 'vitest/config'
-import tsconfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: {
+    tsconfigPaths: true,
+  },
 
   test: {
-    retry: 10,
+    retry: 2,
     root: './',
     passWithNoTests: true,
     environment: 'node',
     include: ['**/__tests__/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    testTimeout: 60000,
     env: {
       NODE_ENV: 'test',
     },

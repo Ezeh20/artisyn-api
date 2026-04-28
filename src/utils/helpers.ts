@@ -77,14 +77,18 @@ export const authenticateToken = (
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
-  RequestError.assertFound(token, "Unauthenticated", 401, req, res);
+  if (!token) {
+    return RequestError.abortIf(true, "Unauthenticated", 401, req, res);
+  }
 
   try {
     jwt.verify(
       token!,
       env("JWT_SECRET", ""),
       async (err: any, jwtPayload: any) => {
-        RequestError.assertFound(!err, "Unauthenticated", 401);
+        if (err) {
+          return RequestError.abortIf(true, "Unauthenticated", 401, req, res);
+        }
 
         const accessToken = await prisma.personalAccessToken.findFirst({
           where: { token },
@@ -118,6 +122,62 @@ export const authenticateToken = (
     );
   } catch (e) {
     RequestError.abortIf(true, "Unauthenticated", 401, req, res);
+  }
+};
+
+export const authenticateOptionalToken = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    jwt.verify(
+      token!,
+      env("JWT_SECRET", ""),
+      async (err: any, jwtPayload: any) => {
+        if (err) {
+          return next();
+        }
+
+        const accessToken = await prisma.personalAccessToken.findFirst({
+          where: { token },
+          include: { user: { include: { curator: true } } },
+        });
+        let user = accessToken?.user;
+
+        // Test environment fallback: allow JWT-only auth without DB token lookup
+        if (!user && process.env.NODE_ENV === "test" && jwtPayload?.id) {
+          user = (await prisma.user.findUnique({
+            where: { id: jwtPayload.id },
+            include: { curator: true },
+          })) as any;
+        }
+
+        // Check if user exists and token is valid (with null-safe expiry check)
+        if (
+          !user ||
+          (!accessToken && process.env.NODE_ENV !== "test") ||
+          (accessToken &&
+            isPast(constructFrom(accessToken.expiresAt!, new Date())))
+        ) {
+          return next();
+        }
+
+        req.user = user as never;
+        req.authToken = accessToken?.token;
+
+        next();
+      },
+    );
+  } catch (e) {
+    next();
   }
 };
 

@@ -7,7 +7,9 @@ import UserProfileCollection from "src/resources/UserProfileCollection";
 import UserProfileResource from "src/resources/UserProfileResource";
 import { logAuditEvent } from 'src/utils/auditLogger';
 import { prisma } from 'src/db';
-import { profileValidationRules } from 'src/utils/profileValidators';
+import { normalizeSocialLinks, profileValidationRules } from 'src/utils/profileValidators';
+import { PrivacyService } from 'src/services/PrivacyService';
+import { PrivacyGuard } from 'src/services/PrivacyGuard';
 
 /**
  * UserProfileController - Manages user profile CRUD operations
@@ -75,15 +77,15 @@ export default class extends BaseController {
             RequestError.assertFound(userId, 'Unauthorized', 401);
 
             // Validate input
-            const errors = await this.validateAsync(req, profileValidationRules);
-            RequestError.abortIf(Object.keys(errors).length > 0, 'Validation failed', 422);
+            const data = await this.validateAsync(req, profileValidationRules);
+            const socialLinks = normalizeSocialLinks(data.socialLinks);
 
             // Get existing profile
             const existingProfile = await prisma.userProfile.findFirst({
                 where: { userId },
             });
 
-            // Calculate completion percentage
+// Calculate completion percentage from merged profile state
             const completionFields = [
                 'bio',
                 'dateOfBirth',
@@ -92,14 +94,22 @@ export default class extends BaseController {
                 'occupation',
                 'companyName',
             ];
+            
+            // Merge existing profile with request body
+            const mergedProfile = {
+                ...existingProfile,
+                ...req.body,
+            };
+            
             const filledFields = completionFields.filter(
-                field => req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== ''
+                field => mergedProfile[field] !== undefined && mergedProfile[field] !== null && mergedProfile[field] !== ''
             ).length;
             const completionPercentage = Math.round((filledFields / completionFields.length) * 100);
 
             // Prepare update data
             const updateData: any = {
-                ...req.body,
+                ...data,
+                socialLinks,
                 profileCompletionPercentage: completionPercentage,
             };
 
@@ -160,9 +170,33 @@ export default class extends BaseController {
                 },
             });
 
-            const data = profile || {
+            const completionFields = [
+                'bio',
+                'dateOfBirth',
+                'profilePictureUrl',
+                'website',
+                'occupation',
+                'companyName',
+            ];
+            
+            const missingFields = completionFields.filter((field: string) => {
+                const value = profile?.[field as keyof typeof profile];
+                return value === undefined || value === null || value === '';
+            });
+
+            const data = profile ? {
+                ...profile,
+                missingFields,
+            } : {
                 id: null,
                 profileCompletionPercentage: 0,
+                bio: null,
+                dateOfBirth: null,
+                profilePictureUrl: null,
+                website: null,
+                occupation: null,
+                companyName: null,
+                missingFields: [...completionFields],
             };
 
             new UserProfileResource(req, res, data)
@@ -184,28 +218,45 @@ export default class extends BaseController {
     getPublicProfile = async (req: Request, res: Response) => {
         try {
             const targetUserId = req.params.userId;
+            const viewerId = req.user?.id || null;
             RequestError.assertFound(targetUserId, 'User ID required', 400);
 
-            const profile = await prisma.userProfile.findFirst({
-                where: { userId: String(targetUserId) },
-                select: {
-                    id: true,
-                    userId: true,
-                    bio: true,
-                    profilePictureUrl: true,
-                    website: true,
-                    occupation: true,
-                    companyName: true,
-                    location: true,
-                    verifiedBadge: true,
-                    isProfessional: true,
-                    isPublic: true,
-                    createdAt: true,
-                },
-            });
+            // Fetch user, profile, and privacy settings
+            const [user, profile, privacySettings] = await Promise.all([
+                prisma.user.findUnique({
+                    where: { id: String(targetUserId) },
+                }),
+                prisma.userProfile.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+                prisma.privacySettings.findUnique({
+                    where: { userId: String(targetUserId) },
+                }),
+            ]);
 
             RequestError.assertFound(profile, 'Profile not found', 404);
-            RequestError.assertFound(profile.isPublic, 'Profile is private', 403);
+            RequestError.assertFound(user, 'User not found', 404);
+
+            // Return 403 if profile is private
+            if (privacySettings?.profileVisibility === 'PRIVATE') {
+                return res.status(403).json({
+                    status: 'error',
+                    code: 403,
+                    message: 'This profile is private'
+                });
+            }
+
+            // Build response with conditional field inclusion
+            const publicProfile = {
+                userId: profile.userId,
+                bio: profile.bio,
+                companyName: profile.companyName,
+                createdAt: profile.createdAt,
+                dateOfBirth: profile.dateOfBirth,
+                location: privacySettings?.showLocation ? profile.location : null,
+                email: privacySettings?.showEmail ? user.email : null,
+                phone: privacySettings?.showPhone ? user.phone : null,
+            };
 
             // Log public profile view
             await logAuditEvent(req.user?.id, 'PROFILE_VIEW', {
@@ -218,14 +269,16 @@ export default class extends BaseController {
                 },
             });
 
-            new UserProfileResource(req, res, profile)
-                .json()
-                .status(200)
-                .additional({
-                    status: 'success',
-                    message: 'Public profile retrieved',
-                    code: 200,
-                });
+            // Enforce searchEngineIndexing: tell crawlers whether to index this profile
+            const robotsDirective = await PrivacyGuard.getRobotsDirective(String(targetUserId));
+            res.setHeader('X-Robots-Tag', robotsDirective);
+
+            res.status(200).json({
+                status: 'success',
+                code: 200,
+                message: 'Public profile retrieved',
+                data: publicProfile,
+            });
         } catch (error) {
             throw error;
         }

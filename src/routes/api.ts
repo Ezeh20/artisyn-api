@@ -3,12 +3,13 @@ import { Request, Response, Router } from "express";
 import AccountLinkingController from 'src/controllers/AccountLinkingController';
 import CategoryController from 'src/controllers/CategoryController';
 import DataExportController from 'src/controllers/DataExportController';
+import FriendshipController from 'src/controllers/FriendshipController';
 import PreferencesController from 'src/controllers/PreferencesController';
 import PrivacySettingsController from 'src/controllers/PrivacySettingsController';
 import ProfileController from 'src/controllers/ProfileController';
 import ReviewController from "src/controllers/ReviewController";
 import SearchController from "src/controllers/SearchController";
-import { authenticateToken } from "src/utils/helpers";
+import { authenticateOptionalToken, authenticateToken } from "src/utils/helpers";
 
 const router = Router();
 const reviewController = new ReviewController();
@@ -46,11 +47,11 @@ router.use("/", (await import("./api/applications")).default);
 router.get("/curators/:id/reviews", reviewController.curatorReviews);
 
 // Profile routes
-router.get('/profile', new ProfileController().getProfile);
-router.post('/profile', new ProfileController().updateProfile);
-router.get('/profile/completion', new ProfileController().getProfileCompletion);
+router.get('/profile', authenticateToken, new ProfileController().getProfile);
+router.post('/profile', authenticateToken, new ProfileController().updateProfile);
+router.get('/profile/completion', authenticateToken, new ProfileController().getProfileCompletion);
 router.get('/profile/:userId/public', new ProfileController().getPublicProfile);
-router.delete('/profile', new ProfileController().deleteProfile);
+router.delete('/profile', authenticateToken, new ProfileController().deleteProfile);
 
 // Preferences routes
 router.get('/preferences', authenticateToken, new PreferencesController().getPreferences);
@@ -68,9 +69,32 @@ router.post('/privacy/unblock', authenticateToken, new PrivacySettingsController
 router.get('/privacy/blocklist', authenticateToken, new PrivacySettingsController().getBlockList);
 router.post('/privacy/retention', authenticateToken, new PrivacySettingsController().updateDataRetention);
 
+// Restricted list management
+router.post('/privacy/restrict', authenticateToken, new PrivacySettingsController().addToRestrictedList);
+router.post('/privacy/unrestrict', authenticateToken, new PrivacySettingsController().removeFromRestrictedList);
+router.get('/privacy/restricted-list', authenticateToken, new PrivacySettingsController().getRestrictedList);
+
+// Custom privacy rules management
+router.post('/privacy/custom-rules', authenticateToken, new PrivacySettingsController().updateCustomPrivacyRules);
+router.get('/privacy/custom-rules/default', authenticateToken, new PrivacySettingsController().getDefaultCustomRules);
+
+// Friendship management routes
+router.get('/friends', authenticateToken, new FriendshipController().getFriends);
+router.post('/friends/request', authenticateToken, new FriendshipController().sendFriendRequest);
+router.get('/friends/requests/pending', authenticateToken, new FriendshipController().getPendingRequests);
+router.get('/friends/requests/sent', authenticateToken, new FriendshipController().getSentRequests);
+router.post('/friends/requests/accept', authenticateToken, new FriendshipController().acceptFriendRequest);
+router.post('/friends/requests/decline', authenticateToken, new FriendshipController().declineFriendRequest);
+router.post('/friends/remove', authenticateToken, new FriendshipController().removeFriend);
+router.post('/friends/block', authenticateToken, new FriendshipController().blockUser);
+router.post('/friends/unblock', authenticateToken, new FriendshipController().unblockUser);
+router.get('/friends/blocked', authenticateToken, new FriendshipController().getBlockedUsers);
+
 // Account Linking routes
 router.get('/account-links', authenticateToken, new AccountLinkingController().getLinkedAccounts);
 router.post('/account-links', authenticateToken, new AccountLinkingController().linkAccount);
+router.post('/account-links/check-availability', authenticateToken, new AccountLinkingController().checkAvailability);
+router.post('/account-links/verify', authenticateToken, new AccountLinkingController().verifyAccountLink);
 router.get('/account-links/:provider', authenticateToken, new AccountLinkingController().checkProviderLinked);
 router.delete('/account-links/:provider', authenticateToken, new AccountLinkingController().unlinkAccount);
 
@@ -81,6 +105,6 @@ router.get('/data-export/:requestId/status', authenticateToken, new DataExportCo
 router.get('/data-export/:requestId/download', authenticateToken, new DataExportController().downloadExport);
 router.post('/data-export/:requestId/cancel', authenticateToken, new DataExportController().cancelExport);
 router.post('/account/deletion-request', authenticateToken, new DataExportController().requestAccountDeletion);
-router.post('/account/cancel-deletion', authenticateToken, new DataExportController().cancelAccountDeletion);
+router.post('/account/cancel-deletion', authenticateOptionalToken, new DataExportController().cancelAccountDeletion);
 
 export default router; 
